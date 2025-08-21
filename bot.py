@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import pytz
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 
 from faker import Faker
 import pyotp
@@ -1546,6 +1548,22 @@ async def off_otp_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await back_to_admin_panel(update, context)
 
+# --- Health Check Server for Render ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Telegram bot is running!')
+
+def run_health_check():
+    """Runs a simple HTTP server for health checks"""
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logger.info(f'Health check server running on port {port}')
+    server.serve_forever()
+# --- End of Health Check Server Code ---
+
 # --- Main Handler for Text and State Machine ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """The main router for all text messages."""
@@ -1669,6 +1687,12 @@ async def post_init(application: Application) -> None:
 
 def main() -> None:
     """Start the bot."""
+    # Start health check server in a separate thread
+    health_check_thread = threading.Thread(target=run_health_check)
+    health_check_thread.daemon = True
+    health_check_thread.start()
+    
+    # Your existing bot initialization code
     persistence = PicklePersistence(filepath="bot_data.pkl")
     application = Application.builder().token(BOT_TOKEN).persistence(persistence).post_init(post_init).build()
     
@@ -1677,6 +1701,3 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
